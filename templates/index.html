@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nutrition AI</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+
+/* =========================
+   BASE
+========================= */
+body {
+    margin: 0;
+    font-family: system-ui, Arial;
+    background: radial-gradient(circle at top, #0f172a, #020617);
+    color: white;
+}
+
+/* =========================
+   TOP BAR
+========================= */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 30px;
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.logo {
+    font-weight: bold;
+    font-size: 18px;
+    letter-spacing: 1px;
+}
+
+.status {
+    background: #16a34a;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+/* =========================
+   MAIN WRAPPER
+========================= */
+.container {
+    max-width: 1100px;
+    margin: auto;
+    padding: 30px;
+}
+
+/* =========================
+   GRID
+========================= */
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* FULL WIDTH */
+.full {
+    grid-column: span 2;
+}
+
+/* =========================
+   GLASS CARD
+========================= */
+.card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    backdrop-filter: blur(12px);
+}
+
+/* =========================
+   INPUT
+========================= */
+textarea, input {
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    color: white;
+    outline: none;
+}
+
+button {
+    width: 100%;
+    margin-top: 12px;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* =========================
+   OUTPUT
+========================= */
+.output {
+    white-space: pre-wrap;
+    min-height: 280px;
+    padding: 15px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    overflow-y: auto;
+}
+
+/* =========================
+   TITLE
+========================= */
+h2 {
+    margin: 0;
+}
+
+.subtitle {
+    opacity: 0.7;
+    font-size: 14px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+@media(max-width: 800px){
+    .grid{
+        grid-template-columns: 1fr;
+    }
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+    <div class="logo">🥗 Nutrition AI Pro</div>
+    <div class="status">AI Online</div>
+</div>
+
+<!-- MAIN -->
+<div class="container">
+
+    <h2>Health Analysis Workspace</h2>
+    <div class="subtitle">Upload reports or enter blood values to get nutrition insights</div>
+
+    <div class="grid">
+
+        <!-- INPUT -->
+        <div class="card">
+            <h3>🧪 Blood Report Input</h3>
+            <textarea id="textInput" rows="6" placeholder="Hb 10.5, Vitamin D low, Sugar 140..."></textarea>
+            <button onclick="generate()">Analyze</button>
+        </div>
+
+        <!-- PDF -->
+        <div class="card">
+            <h3>📄 Upload Report PDF</h3>
+            <input type="file" id="pdfFile">
+            <button onclick="uploadPDF()">Analyze PDF</button>
+        </div>
+
+        <!-- OUTPUT -->
+        <div class="card full">
+            <h3>📊 AI Health Report</h3>
+            <div id="output" class="output"></div>
+            <button onclick="downloadPDF()">Download Report</button>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+let lastOutput = "";
+
+/* =========================
+   GENERATE
+========================= */
+function generate() {
+    const text = document.getElementById("textInput").value;
+
+    fetch("/generate", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "prompt=" + encodeURIComponent(text)
+    }).then(res => {
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        document.getElementById("output").innerText = "";
+        lastOutput = "";
+
+        function read() {
+            reader.read().then(({done, value}) => {
+                if (done) return;
+
+                const chunk = decoder.decode(value);
+                lastOutput += chunk;
+
+                document.getElementById("output").innerText += chunk;
+
+                read();
+            });
+        }
+
+        read();
+    });
+}
+
+
+/* =========================
+   PDF UPLOAD
+========================= */
+function uploadPDF() {
+    const file = document.getElementById("pdfFile").files[0];
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    fetch("/upload_pdf", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        lastOutput = data.result;
+        document.getElementById("output").innerText = data.result;
+    });
+}
+
+
+/* =========================
+   DOWNLOAD
+========================= */
+function downloadPDF() {
+    if (!lastOutput || lastOutput.trim().length < 10) {
+        alert("No report generated");
+        return;
+    }
+
+    const form = new FormData();
+    form.append("content", lastOutput);
+
+    fetch("/download_pdf", {
+        method: "POST",
+        body: form
+    })
+    .then(res => res.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "nutrition_report.pdf";
+        a.click();
+    });
+}
+
+</script>
+
+</body>
+</html>
